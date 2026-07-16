@@ -1,9 +1,56 @@
 // login_screen.dart
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'auth_storage.dart';
 import 'habit_tracker_screen.dart';
 import 'register_screen.dart';
+
+Map<String, String?> getStoredCredentials({
+  String? currentUserJson,
+  String? registeredUsername,
+  String? registeredPassword,
+  String? lastRegisteredUsername,
+  String? lastRegisteredPassword,
+  String? username,
+  String? password,
+}) {
+  if (currentUserJson != null) {
+    try {
+      final decoded = jsonDecode(currentUserJson);
+      if (decoded is Map<String, dynamic>) {
+        return {
+          'username': decoded['username']?.toString(),
+          'password': decoded['password']?.toString(),
+        };
+      }
+    } catch (_) {
+      // Ignore malformed JSON and fall back to the individual keys.
+    }
+  }
+
+  return {
+    'username': registeredUsername ?? lastRegisteredUsername ?? username,
+    'password': registeredPassword ?? lastRegisteredPassword ?? password,
+  };
+}
+
+bool isValidLoginCredentials({
+  required String enteredUsername,
+  required String enteredPassword,
+  String? storedUsername,
+  String? storedPassword,
+}) {
+  final normalizedEnteredUsername = enteredUsername.trim().toLowerCase();
+  final normalizedEnteredPassword = enteredPassword.trim();
+  final normalizedStoredUsername = storedUsername?.trim().toLowerCase();
+  final normalizedStoredPassword = storedPassword?.trim();
+
+  return normalizedEnteredUsername == normalizedStoredUsername &&
+      normalizedEnteredPassword == normalizedStoredPassword;
+}
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,10 +62,23 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  String _loadedUserSummary = 'No saved user';
 
-  // Default credentials
-  final String defaultUsername = 'testuser';
-  final String defaultPassword = 'password123';
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedUser();
+  }
+
+  Future<void> _loadSavedUser() async {
+    final storedCredentials = await AuthStorage.loadCredentials();
+
+    if (!mounted) return;
+    setState(() {
+      _loadedUserSummary =
+          'Saved user: ${storedCredentials['username']} / ${storedCredentials['password']}';
+    });
+  }
 
   void _login() async {
     final username = _usernameController.text;
@@ -26,13 +86,40 @@ class _LoginScreenState extends State<LoginScreen> {
 
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    // Check against default credentials
-    if (username == defaultUsername && password == defaultPassword) {
-      await prefs.setString('name', 'Test User');
-      await prefs.setString('username', 'testuser');
-      await prefs.setDouble('age', 25);
-      await prefs.setString('country', 'United States');
+    final storedCredentials = await AuthStorage.loadCredentials();
 
+    final storedUsername = storedCredentials['username'];
+    final storedPassword = storedCredentials['password'];
+
+    if (isValidLoginCredentials(
+      enteredUsername: username,
+      enteredPassword: password,
+      storedUsername: storedUsername,
+      storedPassword: storedPassword,
+    )) {
+      final savedName = prefs.getString('name') ?? username;
+      final savedAge = prefs.getDouble('age') ?? 25;
+      final savedCountry = prefs.getString('country') ?? 'United States';
+
+      await prefs.setString('name', savedName);
+      await prefs.setString('username', username);
+      await prefs.setString('password', password);
+      await prefs.setString('registeredUsername', username);
+      await prefs.setString('registeredPassword', password);
+      await prefs.setString(
+        'currentUser',
+        jsonEncode({
+          'name': savedName,
+          'username': username,
+          'password': password,
+          'age': savedAge,
+          'country': savedCountry,
+        }),
+      );
+      await prefs.setDouble('age', savedAge);
+      await prefs.setString('country', savedCountry);
+
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -40,8 +127,6 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } else {
-      //empty out shared preferences
-      await prefs.clear();
       Fluttertoast.showToast(
         msg: "The username or password was incorrect",
         toastLength: Toast.LENGTH_SHORT,
@@ -80,6 +165,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 30),
+                Text(
+                  _loadedUserSummary,
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                const SizedBox(height: 12),
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white,

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'auth_storage.dart';
 import 'country_list.dart';
 import 'habit_tracker_screen.dart';
 import 'login_screen.dart';
@@ -18,6 +19,7 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _nameController = TextEditingController();
   final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
   double _age = 25; // Default age set to 25
   String _country = 'United States';
   List<String> _countries = [];
@@ -77,8 +79,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _register() async {
     final name = _nameController.text;
     final username = _usernameController.text;
+    final password = _passwordController.text;
 
-    if (username.isEmpty || name.isEmpty) {
+    if (username.isEmpty || name.isEmpty || password.isEmpty) {
       _showToast('Please fill in all fields');
       return;
     }
@@ -95,12 +98,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
       selectedHabitsMap[habit] = randomColor.value.toRadixString(16);
     }
 
-    // Save user information and habits to shared preferences.
-    await prefs.setString('name', name);
-    await prefs.setString('username', username);
-    await prefs.setDouble('age', _age);
-    await prefs.setString('country', _country);
+    await AuthStorage.saveUser(
+      name: name,
+      username: username,
+      password: password,
+      age: _age,
+      country: _country,
+    );
+
     await prefs.setString('selectedHabitsMap', jsonEncode(selectedHabitsMap));
+    await prefs.setBool('isRegistered', true);
+
     // await prefs.setStringList('selectedHabits', selectedHabits);
 
     Navigator.pushReplacement(
@@ -163,6 +171,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 SizedBox(height: 10),
                 _buildInputField(
                     _usernameController, 'Username', Icons.alternate_email),
+                SizedBox(height: 10),
+                _buildInputField(
+                    _passwordController, 'Password', Icons.lock, obscureText: true),
                 SizedBox(height: 10),
                 Text('Age: ${_age.round()}',
                     style: TextStyle(color: Colors.white, fontSize: 18)),
@@ -243,7 +254,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Widget _buildInputField(
-      TextEditingController controller, String hint, IconData icon) {
+      TextEditingController controller, String hint, IconData icon,
+      {bool obscureText = false}) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -251,6 +263,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       child: TextField(
         controller: controller,
+        obscureText: obscureText,
         decoration: InputDecoration(
           prefixIcon: Icon(icon, color: Colors.blue.shade700),
           hintText: hint,
